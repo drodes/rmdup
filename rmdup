@@ -1,0 +1,185 @@
+#! /bin/bash
+
+#set -o xtrace
+#set -o nounset
+
+##############################################################################
+# Name     : rmdup (ReMove DUPlicate files)
+# Llicense : The MIT License (MIT)
+# Premise  : If keys generated from different files are equal, then the files 
+#            are exactly the same, despite having a different name
+# Goal     : Generate a script to remove duplicate files of a directory,
+#            except the last copy of each file
+# Require  : sqlite3
+# Usage    : ./rmdup path 
+##############################################################################
+
+V_VERSION=20151011_1955         #Version of this script
+C_DB=/tmp/.dup_files.db         #Database with the registers of duplicate files
+C_SCRIPT=/tmp/dup_files.sh      #Prepared script to remove duplicate files while retaining most recent
+
+##############################################################################
+# Error Message and explanation of operating parameters if missing
+##############################################################################
+f_info ()
+{
+   echo
+   echo "$0"
+   echo "Version: $V_VERSION"
+   echo
+   echo "GOAL: Remove duplicate files that exist in a file system."
+   echo "   We will know:"
+   echo "      How many files are unique."
+   echo "      How many files are duplicates."
+   echo "      How often are repeated."
+   echo "      How much free space if you delete the copies."
+   echo "   We'll get:"
+   echo "      A script to remove duplicate files keeping the latest copy."
+   echo
+   echo "RUNNING: The process records all the files in a database ($C_DB)."
+   echo "   This database is overwritten each time you run this script."
+   echo "   We generate a unique hash for each file. Those that have the same hash "
+   echo "   are duplicates. Finally, displays information about the duplicate files"
+   echo "   and generates a script ($C_SCRIPT) prepared to remove"
+   echo "   duplicate files while retaining most recent."
+   echo "   If you want to run this script you have to do: sh $C_SCRIPT"
+   echo "   If you don't run the script, it will not remove any files."
+   echo
+   echo "USAGE: $0 directory"
+   echo "   directory: directory where you want to find duplicate files (full path)" 
+   echo
+   echo "EXAMPLE: $0 $HOME"
+   echo 
+   exit 1
+}
+
+##############################################################################
+# Verification of whether the parameters are correct
+##############################################################################
+f_parameter_verification ()
+{
+   if [ -d $1 ]
+   then
+      V_DIRECTORY=$1
+   else
+      echo "ERROR: the directory $1 doesn't exist"
+      exit 1
+   fi
+}
+
+##############################################################################
+# Check if any database
+#     If exist: removes the database and create the database with the duplicate
+#     file table
+##############################################################################
+f_create_db ()
+{
+   if [ -e $C_DB ] 
+   then
+      /bin/rm $C_DB
+      /bin/touch $C_DB
+   fi
+   sqlite3 $C_DB "CREATE TABLE 'main'.'duplicates' ('filehash' TEXT NOT NULL,'filename' TEXT NOT NULL,'filesize' INTEGER,'filechange' INTEGER,'elim' INTEGER);"
+   if [ $? -ne 0 ]
+   then
+      echo "ERROR: I can't find SQLITE3"
+      echo "       Install it before run this script again"
+      exit 1
+   fi
+}
+
+##############################################################################
+# Fill the table with the list of duplicate files from the directory
+# At the end returns the number of records in the database
+##############################################################################
+f_populates_file_list ()
+{
+   #Gets the list of files that are in the directory (and subdirectories) passed as argument regardless links (-H)
+   find -H $V_DIRECTORY -type f -ls -exec $0 "#" {} \;
+   #Number of files registered in the database
+   V_REGISTERED_FILES=$(sqlite3 $C_DB "select count (*) from duplicates;")
+   #Number of files that have no copy
+   V_UNIQUE_FILES=$(sqlite3 $C_DB "select count (*) from (select count (filehash) as sha from duplicates group by filehash having (sha = 1));")
+   #Number of files that have some duplicate
+   V_ORIGINAL_FILES=$(sqlite3 $C_DB "select count (*) from (select count (filehash) as sha from duplicates group by filehash having (sha > 1));")
+}
+
+##############################################################################
+# Clear records of database files that have no copy 
+##############################################################################
+f_unique_delete_records ()
+{
+   sqlite3 $C_DB "delete from duplicates where filehash in (select filehash as sha from duplicates group by filehash having (count (filehash) = 1));"
+   V_DUPLICATE_FILES=$(sqlite3 $C_DB "select count (*) from duplicates;")
+   #Calculates the number of unwanted files
+   let V_SURPLUS_FILES=$V_DUPLICATE_FILES-$V_ORIGINAL_FILES
+}
+
+##############################################################################
+# Mark files to be preserved
+# By default all duplicate files are marked to be deleted
+# We need preserve one copy of each one (the most recent copy)
+##############################################################################
+f_mark_files_to_be_preserved ()
+{
+   sqlite3 $C_DB "update duplicates set elim=1 where filename in ( select filename from duplicates group by filehash order by filehash,filechange desc);"
+   #Amount of space we get if we delete the copies
+   V_AMOUNT_OF_SPACE=$(sqlite3 $C_DB "select sum(filesize) as alliberar from duplicates where elim = 0;")
+}
+
+##############################################################################
+# Generate script to delete marked files to remove
+##############################################################################
+f_generate_script_to_delete_files ()
+{
+   sqlite3 -batch $C_DB "select filename from duplicates where elim = 0;" > $C_SCRIPT.tmp
+   cat $C_SCRIPT.tmp | awk '{print "rm -v \""$0"\""}' > $C_SCRIPT
+   rm $C_SCRIPT.tmp
+}
+
+##############################################################################
+# Presents results about duplicate files
+##############################################################################
+f_presents_results ()
+{
+   echo
+   echo "Registered files: $V_REGISTERED_FILES"
+   echo "- Unique files: $V_UNIQUE_FILES"
+   echo "- Files with some duplicate: $V_ORIGINAL_FILES"
+   echo "- Total number of copies: $V_DUPLICATE_FILES"
+   echo "- Unwanted files. Files to remove: $V_DUPLICATE_FILES-$V_ORIGINAL_FILES = $V_SURPLUS_FILES"
+   echo "- Amount of space you get if you remove copies (in bytes): $V_AMOUNT_OF_SPACE"
+   echo "# ($C_SCRIPT) ready to delete duplicate files while retaining the most recent copy of each one"
+   echo "# If you want to run this script you must do: sh $C_SCRIPT"
+   echo "# If you don't run this script it doesn't remove any files"
+   echo
+}
+##############################################################################
+# Main
+##############################################################################
+if [[ $# -eq 0 ]]
+then
+   f_info
+elif [[ $# -eq 1 ]]
+then
+   f_parameter_verification $1
+elif [[ $# -eq 2 ]] && [[ $1 = "#" ]]
+then
+   #Rregisters the file in the database
+   V_FILEHASH=$(sha1sum "$2" | awk '{print $1}')   #Hash generated from the file
+   V_FILENAME=$(echo "$2")                         #Full path/filename
+   V_FILESIZE=$(stat -c %s "$2")                   #File size
+   V_FILECHANGE=$(stat -c %Z "$2")                 #Date and time the file has been changed (ctime) (no mtime or atime because they are the same)
+   C_ELIM=0                                        #Elimination mark 0=yes (default setting)
+   sqlite3 $C_DB "insert into duplicates values('$V_FILEHASH','$V_FILENAME','$V_FILESIZE','$V_FILECHANGE','$C_ELIM')" && exit 0
+   exit 1
+else
+   f_info
+fi
+f_create_db
+f_populates_file_list
+f_unique_delete_records
+f_mark_files_to_be_preserved
+f_generate_script_to_delete_files
+f_presents_results
+
