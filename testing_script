@@ -1,0 +1,76 @@
+#! /bin/bash
+
+echo "#Makes a testing directory"
+mkdir rmdup_test
+cd rmdup_test
+
+echo "#Makes file1. Now file1 is unique in this directory"
+ls ../ > original1
+sleep 1
+
+echo "#Makes file2. Now file2 is unique. There are 2 unique files in this directory"
+ls -l ../ > original2
+sleep 1
+
+echo "#Makes file3. Now file3 is unique. There are 3 unique files in this directory"
+ls -m ../ > original3
+sleep 1
+
+echo "#Makes a copy of file2. Now file2 is not unique. There are 2 duplicated files and 2 unique files in this directory"
+cp original2 copy21
+sleep 1
+
+echo "#Makes a copy of file3. Now file3 is not unique. There are 4 duplicated files and 1 unique files in this directory"
+cp original3 copy31
+sleep 1
+
+echo "#Makes a soft link of file3. This will not be taken into consideration because is only a symbolic link"
+ln -s original2 "copy2 2"
+sleep 1
+
+echo "#Makes a subdirectory"
+mkdir copies
+sleep 1
+
+echo "#Makes a copy of file3. Now file3 has 2 copies. There are 5 duplicated files and 1 unique files in this directory and his subdirectories"
+cp original3 "copies/copy3 2"
+sleep 1
+
+echo "#Makes file4. Now there are 5 duplicated files and 2 unique files in this directory and his subdirectories"
+ls > original4
+sleep 1
+
+echo "#Makes file5. Now there are 5 duplicated files and 3 unique files in this directory and his subdirectories"
+ls -l > original5
+sleep 1
+
+echo "#Makes another copy of file3. Now file3 has 3 copies. There are 6 duplicated files and 3 unique files in this directory and his subdirectories"
+cp original3 "copies/copy3 3"
+sleep 1
+
+echo "#Makes a hard link of file3. Now file3 has 4 copies. There are 7 duplicated files and 3 unique files in this directory and his subdirectories"
+ln -P original3 "copy3 4"
+
+echo "#List all files of this directory and his subdirectories including the symbolic link but this will not be taken into consideration to count files"
+ls -ltrR
+
+echo "#Now you can run rmdup script over rmdup_test directory to see the result. It must be like this:"
+echo "..."
+echo "Registered files: 10"
+echo "- Unique files: 3"
+echo "- Files with some duplicate: 2"
+echo "- Total number of copies: 7"
+echo "- Unwanted files. Files to remove: 7-2 = 5"
+echo "- Amount of space you get if you remove copies (in bytes): 465"
+echo "# (/tmp/dup_files.sh) ready to delete duplicate files while retaining the most recent copy of each one"
+echo "# If you want to run this script you must do: sh /tmp/dup_files.sh"
+echo "# If you don't run this script it doesn't remove any files"
+echo
+echo
+echo "cat /tmp/dup_files.sh"
+echo "rm -v /home/tots/Documents/dani/scripts/rmdup/rmdup_test/original2"
+echo "rm -v /home/tots/Documents/dani/scripts/rmdup/rmdup_test/original3"
+echo "rm -v /home/tots/Documents/dani/scripts/rmdup/rmdup_test/copy31"
+echo "rm -v /home/tots/Documents/dani/scripts/rmdup/rmdup_test/copies/copy3 2"
+echo "rm -v /home/tots/Documents/dani/scripts/rmdup/rmdup_test/copies/copy3 3"
+echo
