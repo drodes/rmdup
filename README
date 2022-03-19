@@ -1,7 +1,7 @@
 Name     : rmdup (ReMove DUPlicate files).
 Llicense : The MIT License (MIT).
-Premise  : If keys generated from different files are equal, then the files are exactly the same, despite having a different name.
-Goal     : Generate a script to remove duplicate files of a directory, except the last copy of each file.
+Premise  : If hashes generated from different files are equal, then the files are exactly the same, despite having a different name.
+Goal     : Generate a script to remove duplicate files of a directory, except the last copy of each one.
            And show information about duplicate files:
            - How many files are unique.
            - How many files are duplicates.
@@ -10,7 +10,7 @@ Goal     : Generate a script to remove duplicate files of a directory, except th
 Require  : sqlite3
 Usage    : ./rmdup directory
            directory: directory where you want to find duplicate files (full path).
-RUNNING  : The process records all the files in a database. This database is overwritten each time you run this script.
+RUNNING  : The process records all the files, in a database. This database is overwritten each time you run this script.
            We generate a unique hash for each file. Those that have the same hash are duplicates. 
            Finally, displays information about the duplicate files and generates a script prepared to remove duplicate files while retaining most recent.
            If you don't run the script, it will not remove any files.
